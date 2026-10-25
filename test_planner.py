@@ -1,3 +1,5 @@
+import pytest
+
 from planner.ship import (COLS, DOCK, ROWS, TRUCK_MIN, State, balanced, heights,
                           load_manifest, moves, travel)
 
@@ -35,3 +37,45 @@ def test_balanced():
     assert balanced(ship(90, 100))
     assert not balanced(ship(89, 100))
     assert balanced(((),) * COLS)
+
+
+# --- crane search -------------------------------------------------------------
+from planner.crane import plan_balance, plan_transfer, sift_target
+
+
+def replay(cols, base, plan, unload=(), load=()):
+    """Re-apply a plan through moves() so every step is checked as legal."""
+    state = State(cols, DOCK, tuple(sorted(unload)), tuple(sorted(load)))
+    for move, cost in plan:
+        state, step = next((n, c) for m, n, c in moves(state, base) if m == move)
+        assert step == cost
+    return state
+
+
+@pytest.mark.parametrize("case", [1, 2, 3])
+def test_astar_matches_ucs_balance(case):
+    cols, base = load_manifest(f"JSONs/shipCase{case}.json")
+    kind, plan, cost, expanded = plan_balance(cols, base)
+    _, _, ucs_cost, ucs_expanded = plan_balance(cols, base, informed=False)
+    assert kind == "balance" and cost == ucs_cost      # heuristic never overestimated
+    assert expanded <= ucs_expanded                    # and it actually helped
+    assert balanced(replay(cols, base, plan).cols)
+
+
+def test_sift_when_unbalanceable():
+    cols, base = load_manifest("JSONs/shipCase5.json")   # 96 of 113 total weight in one box
+    kind, plan, _, _ = plan_balance(cols, base)
+    final = replay(cols, base, plan)
+    assert kind == "sift"
+    assert tuple(tuple(w for w, _ in s) for s in final.cols) == sift_target(cols, base)
+
+
+def test_astar_matches_ucs_transfer():
+    cols, base = load_manifest("JSONs/shipCase3.json")
+    unload, load = [cols[0][0][1]], [(42, "New")]   # unload the buried box in column 1
+    plan, cost, _ = plan_transfer(cols, base, unload, load)
+    _, ucs_cost, _ = plan_transfer(cols, base, unload, load, informed=False)
+    assert cost == ucs_cost
+    final = replay(cols, base, plan, unload, load)
+    assert (42, "New") in [c for s in final.cols for c in s]
+    assert unload[0] not in [n for s in final.cols for _, n in s]
