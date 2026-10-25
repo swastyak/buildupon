@@ -11,6 +11,13 @@ here unchanged except for an import guard.
 The 2026 extension (`planner/`) replaces the greedy with an A* search, benchmarks the two
 against each other, and adds drone delivery routing.
 
+![Drone routes from the end-to-end demo](docs/routes.png)
+
+`python -m planner.demo JSONs/shipCase3.json --seed 1` unloads 3 containers with the crane
+planner, splits them into packages with drop-offs around a 5 km x 5 km city, routes 6 drones
+around the no-fly zones, and staggers takeoffs so no two drones come within 150 m of each
+other. Full output: [docs/demo_output.txt](docs/demo_output.txt).
+
 ## How it works
 
 - **State** (`planner/ship.py`): 12 columns x 8 levels, each column a stack of
@@ -34,6 +41,12 @@ against each other, and adds drone delivery routing.
 
   None of the heuristics ever overestimates. The tests check this by comparing A* against
   uniform-cost search, which must give the same plan cost.
+- **Weighted A\*** (`weight=2`) multiplies the heuristic by 2. The plan is then guaranteed
+  to cost at most 2x the optimum. On 3-container unload jobs from case 3 it found the
+  optimal plan in 0.3-1.2 s, against 39-118 s for exact A*. The demo uses it. Exact A*
+  still can't empty a whole 6-container ship within its 500,000-state limit. The unload
+  heuristic undercounts vertical travel, since a container could be stacked higher before
+  it is unloaded.
 
 ## Results
 
@@ -61,7 +74,9 @@ over stacks, so the table rescores its moves with the same model as A*.
   Shortcuts never make a path longer.
 - **Fleet:** Google OR-Tools vehicle routing over the smoothed path lengths, with payload
   capacity, battery range per sortie, delivery time windows, and drop penalties so
-  packages that can't be delivered are reported instead of making the solve fail.
+  packages that can't be delivered are reported with a reason (over payload, out of range,
+  or no drone/time slot) instead of making the solve fail. Airtime is charged per second,
+  so a drone with a late delivery slot waits on the pad instead of hovering.
 - **Separation:** samples every drone's position each second and flags pairs closer than
   150 m, ignoring the area right around the hub. `deconflict` then delays departures in
   15 s steps until no conflicts remain, as long as every delivery stays in its window.
@@ -81,4 +96,7 @@ python -m venv .venv
 pip install -r requirements.txt
 pytest -q
 python bench.py
+python -m planner.demo JSONs/shipCase3.json --seed 1
 ```
+
+Tested on Python 3.14 with OR-Tools 9.15.

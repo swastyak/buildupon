@@ -27,8 +27,10 @@ def astar(start, base, is_goal, h, limit=500_000):
     frontier = [(h(start), next(tie), start)]
     expanded = 0
     while frontier:
-        _, _, state = heapq.heappop(frontier)
+        f, _, state = heapq.heappop(frontier)
         g = best[state]
+        if f > g + h(state):
+            continue  # stale entry: this state was reached more cheaply since it was queued
         if is_goal(state):
             plan = []
             while parent[state]:
@@ -121,15 +123,29 @@ def plan_balance(cols, base, informed=True):
 # --- unload / load -----------------------------------------------------------
 
 def unload_h(state):
-    """Each container still to unload must be carried from its column to the dock
-    (horizontal distance col+1) plus the truck handoff; each load needs the handoff
-    plus at least one column of travel. Moves are separate, so the bounds add up."""
-    total = 0
-    for name in state.unload:
-        total += min(c + 1 for c in range(COLS) if any(n == name for _, n in state.cols[c])) + TRUCK_MIN
-    return total + len(state.load) * (TRUCK_MIN + 1)
+    """Lower bound on minutes left to unload and load.
+
+    Split the crane's remaining path at each visit to the dock. Every unload
+    ends one of those trips, and each trip leaves the dock, reaches the
+    container's column c, and comes back: at least 2*(c+1) across, plus 1 down
+    and 1 up. Only the first trip may start away from the dock, at the crane's
+    column p, so it can save up to (c+1) - |p-c| across and the 1 down.
+    Every unload and load also pays the truck handoff. A load's own travel can
+    share a trip with an unload, so it only counts when no unloads remain.
+    """
+    cols_of = [min(c for c in range(COLS) if any(n == name for _, n in state.cols[c])) for name in state.unload]
+    total = sum(2 * (c + 1) + 2 for c in cols_of)
+    if cols_of and state.crane != DOCK:
+        total -= max(c + 1 - abs(state.crane - c) for c in cols_of) + 1
+    total += TRUCK_MIN * (len(state.unload) + len(state.load))
+    if not state.unload:
+        total += 2 * len(state.load)  # each load: at least 1 across and 1 down from the dock
+    return total
 
 
-def plan_transfer(cols, base, unload=(), load=(), informed=True):
+def plan_transfer(cols, base, unload=(), load=(), informed=True, weight=1.0):
+    """weight > 1 runs weighted A* (f = g + weight*h): much faster on big jobs,
+    and the plan is guaranteed to cost at most weight x the optimum."""
     start = State(cols, DOCK, tuple(sorted(unload)), tuple(sorted(load)))
-    return astar(start, base, lambda s: not s.unload and not s.load, unload_h if informed else zero)
+    h = (lambda s: weight * unload_h(s)) if informed else zero
+    return astar(start, base, lambda s: not s.unload and not s.load, h)

@@ -76,6 +76,8 @@ def test_astar_matches_ucs_transfer():
     plan, cost, _ = plan_transfer(cols, base, unload, load)
     _, ucs_cost, _ = plan_transfer(cols, base, unload, load, informed=False)
     assert cost == ucs_cost
+    _, fast_cost, _ = plan_transfer(cols, base, unload, load, weight=2)
+    assert cost <= fast_cost <= 2 * cost                # weighted A* stays within its bound
     final = replay(cols, base, plan, unload, load)
     assert (42, "New") in [c for s in final.cols for c in s]
     assert unload[0] not in [n for s in final.cols for _, n in s]
@@ -109,7 +111,7 @@ def test_fleet_respects_limits():
             Package("heavy", (6, 6), 5000, (0, 3600)),          # over payload: must be dropped
             Package("too_soon", (38, 2), 300, (0, 10))]         # can't get there in 10 s: dropped
     routes, dropped = plan_fleet(CITY, HUB, pkgs, drones=2, payload_g=1200, range_m=8000, time_limit_s=1)
-    assert sorted(dropped) == ["heavy", "too_soon"]
+    assert dropped == {"heavy": "over payload", "too_soon": "no drone or time slot this wave"}
     windows = {p.id: p.window for p in pkgs}
     for r in routes:
         assert r.grams <= 1200 and r.distance_m <= 8000

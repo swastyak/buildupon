@@ -1,0 +1,13 @@
+Crane: unload Cat, Dog, Ewe in 3 moves, 62 crane minutes (weighted A*, at most 2x optimal)
+   1. Dog        column 3 -> truck  (24 min)
+   2. Cat        column 1 -> truck  (18 min)
+   3. Ewe        column 1 -> truck  (20 min)
+
+Drones: 6 packages, 5 delivered this wave, 1 not delivered
+Separation: 1 conflicts before staggering takeoffs, 0 after
+  drone 3: takes off at +0m00s, 11.0 km, 1083 g  [Ewe-2 at +3m02s, Dog-1 at +4m28s]
+  drone 4: takes off at +12m17s, 10.3 km, 894 g  [Dog-2 at +15m00s, Ewe-1 at +16m56s]
+  drone 5: takes off at +0m15s, 6.1 km, 867 g  [Cat-1 at +2m01s]
+  not delivered: Cat-2 (out of range)
+
+Saved docs/routes.png

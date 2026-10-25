@@ -20,6 +20,7 @@ from ortools.constraint_solver import pywrapcp, routing_enums_pb2
 CELL_M = 50
 DIAG = math.sqrt(2)
 DROP_PENALTY = 10_000_000  # meters; larger than any route, so the solver drops only when it must
+AIRTIME_COST = 10          # cost per second airborne, in meters (~1/3 the cost of flying at 29 m/s)
 
 
 class Map(NamedTuple):
@@ -156,7 +157,7 @@ def plan_fleet(m, hub, packages, drones=4, payload_g=1200, range_m=12_000, speed
                service_s=60, horizon_s=3600, time_limit_s=2):
     """Assign packages to drones (one sortie each from the hub) and order the stops.
 
-    Returns (routes, dropped package ids).
+    Returns (routes, dropped) where dropped maps package id -> reason.
     ponytail: one dispatch wave, one sortie per drone. Multi-sortie needs a
     vehicle per (drone, trip) with each trip starting after the previous returns.
     """
@@ -192,6 +193,11 @@ def plan_fleet(m, hub, packages, drones=4, payload_g=1200, range_m=12_000, speed
         idx = manager.NodeToIndex(k)
         time.CumulVar(idx).SetRange(*p.window)
         routing.AddDisjunction([idx], DROP_PENALTY)
+    # Wait on the pad, not in the air: charge for each drone's airtime (landing minus
+    # takeoff, hovering included), and land as early as possible so deliveries aren't late in their windows.
+    time.SetSpanCostCoefficientForAllVehicles(AIRTIME_COST)
+    for v in range(drones):
+        routing.AddVariableMinimizedByFinalizer(time.CumulVar(routing.End(v)))
 
     params = pywrapcp.DefaultRoutingSearchParameters()
     params.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
@@ -228,7 +234,14 @@ def plan_fleet(m, hub, packages, drones=4, payload_g=1200, range_m=12_000, speed
         routes.append(Route(v, stops, sum(dist[a][b] for a, b in zip(seq, seq[1:])),
                             sum(demand[k] for k in seq), timeline))
 
-    dropped = [p.id for k, p in enumerate(packages, 1) if k not in served]
+    def reason(k, p):
+        if p.grams > payload_g:
+            return "over payload"
+        if dist[0][k] * 2 > range_m:
+            return "out of range"
+        return "no drone or time slot this wave"
+
+    dropped = {p.id: reason(k, p) for k, p in enumerate(packages, 1) if k not in served}
     return routes, dropped
 
 
