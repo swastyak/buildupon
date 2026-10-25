@@ -325,17 +325,18 @@ def findFirstLeftCol(y, x, sampleJson):                         # Returns y and 
 
 #-----------------------------------------------------MAIN CODE---------------------------------------------------------------------------#
 
-with open('./shipCase1.json', 'r') as f:
-    sampleJson = json.load(f)
-# print("THIS IS THE SAMPLE JSON AT THE BEGINNING OF ANY ITERATIONS")
-# print(sampleJson)
-print("Executing balance on case 1.")
-#Pass Json here
-balance(sampleJson)
+if __name__ == "__main__":
+    with open('./shipCase1.json', 'r') as f:
+        sampleJson = json.load(f)
+    # print("THIS IS THE SAMPLE JSON AT THE BEGINNING OF ANY ITERATIONS")
+    # print(sampleJson)
+    print("Executing balance on case 1.")
+    #Pass Json here
+    balance(sampleJson)
 
-print("After balancing, it took us a total of " + str(moves) + " moves. It took a total amount of " + str(tot_distance) + " minutes to execute.")
-# print(moves, tot_distance)
-# print("The following are the start and end positions of each container on the ship:")
-# print(move_Dict)
-print("The final manifest looks like this:")
-print(sampleJson)
+    print("After balancing, it took us a total of " + str(moves) + " moves. It took a total amount of " + str(tot_distance) + " minutes to execute.")
+    # print(moves, tot_distance)
+    # print("The following are the start and end positions of each container on the ship:")
+    # print(move_Dict)
+    print("The final manifest looks like this:")
+    print(sampleJson)
