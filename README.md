@@ -85,6 +85,21 @@ On a 5 km x 5 km map with 3 no-fly zones, 15 packages and 6 drones: planning tak
 (2 s is the OR-Tools search limit). All 6 drones leaving at t=0 caused 6 separation
 conflicts on the way out of the hub; staggering departures 15-45 s cleared all of them.
 
+### C++ extension (`cpp/fastgrid.cpp`)
+
+The grid A* and line-of-sight smoothing are also written in C++17, exposed to Python with
+pybind11 as `planner._fastgrid`. `drone.py` uses it when it is built and falls back to the
+pure-Python version otherwise. Both use the same tie-breaking (smallest `(f, x, y)` first,
+same neighbor order), so they return identical paths. A test checks this on 20 random maps,
+and `bench.py` checks it on every benchmark run.
+
+| 1000 x 1000 grid, 10 paths | Total | Per path |
+|---|---|---|
+| Python | 7.0-7.9 s | ~700-790 ms |
+| C++ | 0.13 s | ~13 ms |
+
+About 50x faster (50-60x across 3 runs).
+
 Simplifications: one sortie per drone per wave (no multi-trip), and a flat 2D map (no
 altitude layers or wind).
 
@@ -99,4 +114,12 @@ python bench.py
 python -m planner.demo JSONs/shipCase3.json --seed 1
 ```
 
-Tested on Python 3.14 with OR-Tools 9.15.
+Optional C++ extension:
+
+```
+pip install pybind11
+python setup.py build_ext --inplace     # any C++17 compiler (g++, clang, MSVC)
+# Windows without the Windows SDK: pip install ziglang && python cpp/build_zig.py
+```
+
+Tested on Python 3.14 with OR-Tools 9.15 (Windows, extension built with Zig's clang).

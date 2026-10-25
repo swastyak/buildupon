@@ -146,3 +146,33 @@ def test_deconflict_staggers_departures():
     tight = [p._replace(window=(0, 100)) for p in pkgs]   # no room to wait: one flies, two stay stuck
     _, stuck = deconflict(late, tight, (0, 0))
     assert len(stuck) == 2
+
+
+# --- C++ extension -------------------------------------------------------------
+import random
+
+from planner import drone
+
+
+@pytest.mark.skipif(drone._fastgrid is None, reason="C++ extension not built (see setup.py)")
+def test_cpp_matches_python():
+    rng = random.Random(0)
+    for _ in range(20):
+        zones = []
+        for _ in range(4):
+            x0, x1 = sorted(rng.sample(range(60), 2))
+            y0, y1 = sorted(rng.sample(range(60), 2))
+            zones.append(("rect", x0, y0, x0 + (x1 - x0) // 3, y1))
+        m = make_map(60, 60, zones)
+        g = drone._fastgrid.Grid(m.width, m.height, list(m.blocked))
+        cells = [c for c in ((rng.randrange(60), rng.randrange(60)) for _ in range(40)) if free(m, c)]
+        for a, b in zip(cells, cells[1:]):
+            try:
+                py_path = grid_path(m, a, b)
+            except ValueError:
+                with pytest.raises(ValueError):
+                    g.path(a, b)
+                continue
+            assert g.path(a, b) == py_path
+            assert g.smooth(py_path) == smooth(m, py_path)
+            assert g.clear(a, b) == clear(m, a, b)

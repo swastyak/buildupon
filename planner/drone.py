@@ -11,11 +11,17 @@ Coordinates are grid cells (x, y); each cell is CELL_M meters. Cell (x, y)
 covers [x-0.5, x+0.5] x [y-0.5, y+0.5].
 """
 import bisect
+import functools
 import heapq
 import math
 from typing import NamedTuple
 
 from ortools.constraint_solver import pywrapcp, routing_enums_pb2
+
+try:
+    from . import _fastgrid  # C++ grid_path + smooth (cpp/fastgrid.cpp); see setup.py
+except ImportError:
+    _fastgrid = None
 
 CELL_M = 50
 DIAG = math.sqrt(2)
@@ -149,6 +155,20 @@ def smooth(m, path):
     return out
 
 
+@functools.lru_cache(maxsize=8)
+def _cgrid(m):
+    return _fastgrid.Grid(m.width, m.height, list(m.blocked))
+
+
+def route(m, a, b):
+    """Smoothed path from a to b. Uses the C++ extension when it is built; the
+    pure-Python grid_path and smooth above give the same path, just slower."""
+    if _fastgrid:
+        g = _cgrid(m)
+        return g.smooth(g.path(a, b))
+    return smooth(m, grid_path(m, a, b))
+
+
 def length(points):
     return sum(math.dist(a, b) for a, b in zip(points, points[1:]))
 
@@ -166,7 +186,7 @@ def plan_fleet(m, hub, packages, drones=4, payload_g=1200, range_m=12_000, speed
     legs, dist = {}, [[0] * n for _ in range(n)]
     for i in range(n):
         for j in range(i + 1, n):
-            pts = smooth(m, grid_path(m, nodes[i], nodes[j]))
+            pts = route(m, nodes[i], nodes[j])
             legs[i, j], legs[j, i] = pts, pts[::-1]
             dist[i][j] = dist[j][i] = round(length(pts) * CELL_M)
 

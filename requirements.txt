@@ -1,3 +1,4 @@
 ortools
 matplotlib
 pytest
+pybind11  # optional: C++ extension (setup.py)
