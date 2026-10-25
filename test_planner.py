@@ -79,3 +79,68 @@ def test_astar_matches_ucs_transfer():
     final = replay(cols, base, plan, unload, load)
     assert (42, "New") in [c for s in final.cols for c in s]
     assert unload[0] not in [n for s in final.cols for _, n in s]
+
+
+# --- drone routing ------------------------------------------------------------
+
+from planner.drone import (Package, Route, clear, conflicts, deconflict, free, grid_path,
+                           length, make_map, plan_fleet, smooth)
+
+CITY = make_map(40, 40, [("rect", 10, 0, 12, 30), ("circle", 28, 20, 5)])  # wall with a gap at the top, and a stadium
+HUB = (2, 2)
+
+
+def test_grid_path_avoids_zones_and_smoothing_helps():
+    path = grid_path(CITY, HUB, (20, 5))
+    assert all(free(CITY, c) for c in path)
+    assert max(y for _, y in path) > 30                     # had to go around the wall
+    smoothed = smooth(CITY, path)
+    assert len(smoothed) < len(path) and length(smoothed) <= length(path)
+    for a, b in zip(smoothed, smoothed[1:]):                # independent fine check of every segment
+        for i in range(1001):
+            x, y = a[0] + (b[0] - a[0]) * i / 1000, a[1] + (b[1] - a[1]) * i / 1000
+            assert free(CITY, (round(x), round(y)))
+
+
+def test_fleet_respects_limits():
+    pkgs = [Package("near", (5, 20), 500, (0, 3600)),
+            Package("far", (35, 35), 400, (0, 3600)),
+            Package("east", (20, 10), 600, (0, 3600)),
+            Package("heavy", (6, 6), 5000, (0, 3600)),          # over payload: must be dropped
+            Package("too_soon", (38, 2), 300, (0, 10))]         # can't get there in 10 s: dropped
+    routes, dropped = plan_fleet(CITY, HUB, pkgs, drones=2, payload_g=1200, range_m=8000, time_limit_s=1)
+    assert sorted(dropped) == ["heavy", "too_soon"]
+    windows = {p.id: p.window for p in pkgs}
+    for r in routes:
+        assert r.grams <= 1200 and r.distance_m <= 8000
+        assert all(windows[i][0] <= t <= windows[i][1] for i, t in r.stops)
+    assert sorted(i for r in routes for i, _ in r.stops) == ["east", "far", "near"]
+
+
+def test_conflicts():
+    cross = lambda d, t0: [Route(d, [], 0, 0, [(t0, 0, 20), (t0 + 100, 40, 20)]),
+                           Route(d + 1, [], 0, 0, [(t0, 20, 0), (t0 + 100, 20, 40)])]
+    assert [c[:2] for c in conflicts(cross(0, 0), HUB)] == [(0, 1)]     # both reach (20, 20) at t=50
+    a, b = cross(0, 0)[0], cross(0, 200)[1]                              # same paths, 200 s apart
+    assert conflicts([a, b], HUB) == []
+
+
+def test_clear_is_exact():
+    m = make_map(5, 5, [("rect", 1, 1, 1, 1)])     # one blocked cell, spanning [0.5, 1.5]^2
+    assert not clear(m, (0, 0), (2, 2))             # through the blocked cell's center
+    assert not clear(m, (0, 1), (2, 1))
+    assert clear(m, (0, 2), (2, 4))                 # passes the cell without touching it
+    assert not clear(m, (2, 0), (0, 2))             # through the corners of the blocked cell
+    assert clear(m, (0, 0), (4, 1))                 # slope 1/4 stays under the cell (y <= 0.5 for x <= 2)
+
+
+def test_deconflict_staggers_departures():
+    same = [Route(d, [(f"p{d}", 100)], 0, 0, [(0, 0, 20), (100, 40, 20)]) for d in range(3)]
+    pkgs = [Package(f"p{d}", (40, 20), 0, (0, 3600)) for d in range(3)]
+    fixed, stuck = deconflict(same, pkgs, (0, 0))
+    assert stuck == [] and conflicts(fixed, (0, 0)) == []
+    assert sorted(r.timeline[0][0] for r in fixed) == [0, 15, 30]
+    late = [r._replace(stops=[(r.stops[0][0], 100)]) for r in same]
+    tight = [p._replace(window=(0, 100)) for p in pkgs]   # no room to wait: one flies, two stay stuck
+    _, stuck = deconflict(late, tight, (0, 0))
+    assert len(stuck) == 2

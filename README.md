@@ -1,14 +1,15 @@
-# Crane planner
+# Crane + drone delivery planner
 
-Plans container crane moves to balance, unload, and load a ship, in minimum crane time.
+Plans container crane moves to balance, unload, and load a ship in minimum crane time, then
+routes a drone fleet to deliver the unloaded packages.
 
 The project started as the CS 179M senior project at UC Riverside (Winter 2022, team of 3,
 original repo: [luccavp12/CS179m](https://github.com/luccavp12/CS179m)). That version is a
 Flask web app with a greedy balancer (`balance.py`, `operations.py`, `hello.py`). It is kept
 here unchanged except for an import guard.
 
-The 2026 extension (`planner/`) replaces the greedy with an A* search and benchmarks the two
-against each other.
+The 2026 extension (`planner/`) replaces the greedy with an A* search, benchmarks the two
+against each other, and adds drone delivery routing.
 
 ## How it works
 
@@ -49,6 +50,28 @@ scoring both with the same crane-time model:
 
 The greedy's own minute count (4, 6, 8, 26, 28) leaves out empty crane travel and the climb
 over stacks, so the table rescores its moves with the same model as A*.
+
+## Drone delivery routing (`planner/drone.py`)
+
+- **Paths:** 8-connected A* on a grid of 50 m cells, around no-fly zones (rectangles and
+  circles). The heuristic is octile distance, the exact cost on an empty grid, so it never
+  overestimates. Diagonal steps can't cut the corner of a no-fly cell.
+- **Smoothing:** from each waypoint, jump to the farthest later waypoint with a clear straight
+  line. The line check is an exact grid traversal (Amanatides-Woo) in integer arithmetic.
+  Shortcuts never make a path longer.
+- **Fleet:** Google OR-Tools vehicle routing over the smoothed path lengths, with payload
+  capacity, battery range per sortie, delivery time windows, and drop penalties so
+  packages that can't be delivered are reported instead of making the solve fail.
+- **Separation:** samples every drone's position each second and flags pairs closer than
+  150 m, ignoring the area right around the hub. `deconflict` then delays departures in
+  15 s steps until no conflicts remain, as long as every delivery stays in its window.
+
+On a 5 km x 5 km map with 3 no-fly zones, 15 packages and 6 drones: planning takes 2.9 s
+(2 s is the OR-Tools search limit). All 6 drones leaving at t=0 caused 6 separation
+conflicts on the way out of the hub; staggering departures 15-45 s cleared all of them.
+
+Simplifications: one sortie per drone per wave (no multi-trip), and a flat 2D map (no
+altitude layers or wind).
 
 ## Run
 
