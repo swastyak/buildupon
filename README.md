@@ -3,10 +3,9 @@
 Plans container crane moves to balance, unload, and load a ship in minimum crane time, then
 routes a drone fleet to deliver the unloaded packages.
 
-The project started as the CS 179M senior project at UC Riverside (Winter 2022, team of 3,
-original repo: [luccavp12/CS179m](https://github.com/luccavp12/CS179m)). That version is a
-Flask web app with a greedy balancer (`balance.py`, `operations.py`, `hello.py`). It is kept
-here unchanged except for an import guard.
+It builds on a crane web app written in 2022 by a team of 3 (original repo:
+[luccavp12/CS179m](https://github.com/luccavp12/CS179m)): a Flask app with a greedy balancer
+(`balance.py`, `operations.py`, `hello.py`), kept here unchanged except for an import guard.
 
 The 2026 extension (`planner/`) replaces the greedy with an A* search, benchmarks the two
 against each other, and adds drone delivery routing.
